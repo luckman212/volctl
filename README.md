@@ -12,3 +12,11 @@ Usage: volctl <list|get|set> [device_id] [level] [type: input|output]
     get <device_id> [type]          Get volume level for a device (type is optional)
     set <device_id> <level> [type]  Set volume level for a device (0.000-1.000)
 ```
+
+To use, download the latest [release](https://github.com/luckman212/volctl/releases) and place `volctl` in your `$PATH` somewhere. I suggest `/usr/local/bin`.
+
+To compile from source, clone the repo and run:
+
+```
+swiftc -O -o volctl volctl.swift
+```
