@@ -2,7 +2,9 @@
 
 Get or Set volume level for macOS audio devices.
 
-Support precise floating point values such as 0.273
+Support precise floating point values such as `0.273`
+
+Some devices are "hybrid" and register as both an Input and Output device. For such devices, an additional `type` argument can be supplied to indicate which level you intend to operate on.
 
 ```
 Usage: volctl <list|get|set> [device_id] [level] [type: input|output]
