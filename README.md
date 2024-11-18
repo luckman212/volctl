@@ -1,10 +1,10 @@
 # volctl
 
-Get or Set volume level for macOS audio devices.
+This is a commandline tool to Get or Set the volume level for a macOS audio device.
 
-Support precise floating point values such as `0.273`
+In contrast to the often suggested `osascript -e "output volume of (get volume settings)"`, it supports both getting and setting precise floating point values such as `0.273`
 
-Some devices are "hybrid" and register as both an Input and Output device. For such devices, an additional `type` argument can be supplied to indicate which level you intend to operate on.
+**N.B.** Some devices are "hybrid" and register as both an Input and Output device. For such devices, an additional `type` argument can be supplied to indicate which level you intend to operate on.
 
 ```
 Usage: volctl <list|get|set> [device_id] [level] [type: input|output]
