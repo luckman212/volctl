@@ -1,6 +1,8 @@
 # volctl
 
-Get or Set volume level for macOS audio devices
+Get or Set volume level for macOS audio devices.
+
+Support precise floating point values such as 0.273
 
 ```
 Usage: volctl <list|get|set> [device_id] [level] [type: input|output]
