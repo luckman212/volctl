@@ -1,4 +1,4 @@
-<img height=192 src="./icon.png" />
+![icon](./icon.png)
 
 # volctl
 
