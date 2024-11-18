@@ -1,3 +1,5 @@
+<img width=100 src=icon.png>
+
 # volctl
 
 This is a commandline tool to Get or Set the volume level for a macOS audio device.
