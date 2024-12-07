@@ -499,6 +499,11 @@ func getAllDevices() -> [(id: AudioDeviceID, name: String, isInput: Bool, isOutp
 
 func parseCommandLine() -> Action {
     let action = CommandLine.arguments[safe: 1]?.lowercased() ?? ""
+
+    if ["-h", "--help"].contains(action) {
+        printUsage()
+        exit(0)
+    }
     
     switch action {
     case "list":
@@ -552,7 +557,7 @@ func listDevices() {
     }
 }
 
-if CommandLine.argc < 2 {
+func printUsage() {
     print("""
     Get or Set volume levels or mute state for macOS audio devices
     Usage: volctl <command> [args]
@@ -567,6 +572,10 @@ if CommandLine.argc < 2 {
         <device> can be an ID number or a string (partial ok)
         When using a string to select device, the first match will be used
     """)
+}
+
+if CommandLine.argc < 2 {
+    printUsage()
     exit(0)
 }
 
