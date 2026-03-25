@@ -9,17 +9,21 @@ In contrast to the often suggested `osascript -e "output volume of (get volume s
 **N.B.** Some devices are "hybrid" and register as both an Input and Output device. For such devices, an additional `type` argument can be supplied to indicate which level you intend to operate on.
 
 ```
-Usage: volctl <command> [args]
+Usage: volctl [-q] <command> [args]
+
+Global options:
+    -q, --quiet                    Suppress all stdout/stderr output
 
 Commands:
     list                           List all audio devices (tab-separated)
-    get <device> [type]            Get volume level for a device (type is optional)
+    get <device> [type]            Get volume level for a device
     set <device> <level> [type]    Set volume level for a device (0.0-1.0)
-    mute <device> [on|off] [type]  Control mute state (omitting action will toggle)
+    mute <device> [state] [type]   Control mute state; state is on|off|toggle
 
 Notes:
-    <device> can be an ID number or a string (partial ok)
+    <device> can be an ID number or a string (partial match is ok)
     When using a string to select device, the first match will be used
+    [type] is optional: input | output
 ```
 
 If a device has multiple streams and they are set at different levels (e.g. L/R balance is not equal) then all levels will be output in tab-separated format.
