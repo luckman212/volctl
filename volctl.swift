@@ -3,7 +3,7 @@ import Foundation
 
 extension Array {
     subscript(safe index: Int) -> Element? {
-        return indices.contains(index) ? self[index] : nil
+        indices.contains(index) ? self[index] : nil
     }
 }
 
@@ -17,23 +17,40 @@ enum Action {
 
 var isDebugEnabled: Bool = {
     let debugValue = ProcessInfo.processInfo.environment["DEBUG"]?.lowercased()
-    if ["1", "true", "yes"].contains(debugValue) { return true }
-    return false
+    return ["1", "true", "yes"].contains(debugValue)
 }()
+
+var isQuietEnabled = false
+
+func writeMessage(_ message: String, to handle: FileHandle, terminator: String = "\n") {
+    guard !isQuietEnabled else { return }
+    if let data = (message + terminator).data(using: .utf8) {
+        handle.write(data)
+    }
+}
+
+func out(_ message: String, terminator: String = "\n") {
+    writeMessage(message, to: .standardOutput, terminator: terminator)
+}
+
+func err(_ message: String, terminator: String = "\n") {
+    writeMessage(message, to: .standardError, terminator: terminator)
+}
 
 func log(_ message: String, isDebug: Bool = false, isError: Bool = false, terminator: String = "\n") {
     if isDebug && !isDebugEnabled { return }
     let output = isError ? FileHandle.standardError : FileHandle.standardOutput
-    if let data = (message + terminator).data(using: .utf8) {
-        output.write(data)
-    }
+    writeMessage(message, to: output, terminator: terminator)
 }
 
 func parseTypeArgument(_ type: String) -> Bool? {
     switch type.lowercased() {
-    case "input": return true
-    case "output": return false
-    default: return nil
+    case "input":
+        return true
+    case "output":
+        return false
+    default:
+        return nil
     }
 }
 
@@ -49,28 +66,30 @@ func getDeviceName(deviceID: AudioDeviceID) -> String? {
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
-    
+
     var name: CFString? = nil
     let status = withUnsafeMutablePointer(to: &name) { namePointer in
         namePointer.withMemoryRebound(to: UInt8.self, capacity: Int(propertySize)) { rawPointer in
             AudioObjectGetPropertyData(deviceID, &address, 0, nil, &propertySize, rawPointer)
         }
     }
-    
+
     guard status == noErr else {
         log("Error retrieving name for device \(deviceID)", isError: true)
         return nil
     }
-    
+
     return name as String?
 }
 
 func getDeviceType(deviceID: AudioDeviceID) -> (isInput: Bool, isOutput: Bool) {
     func hasStreams(scope: AudioObjectPropertyScope) -> Bool {
-        let channelCount = getChannelCount(deviceID: deviceID, scope: scope)
-        return channelCount > 0
+        getChannelCount(deviceID: deviceID, scope: scope) > 0
     }
-    return (hasStreams(scope: kAudioDevicePropertyScopeInput), hasStreams(scope: kAudioDevicePropertyScopeOutput))
+    return (
+        hasStreams(scope: kAudioDevicePropertyScopeInput),
+        hasStreams(scope: kAudioDevicePropertyScopeOutput)
+    )
 }
 
 func getChannelCount(deviceID: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
@@ -79,46 +98,41 @@ func getChannelCount(deviceID: AudioDeviceID, scope: AudioObjectPropertyScope) -
         mScope: scope,
         mElement: kAudioObjectPropertyElementMain
     )
+
     var propertySize: UInt32 = 0
     guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &propertySize) == noErr,
-          propertySize > 0 else {
+          propertySize >= UInt32(MemoryLayout<AudioBufferList>.size) else {
         return 0
     }
 
-    let bufferListPointer = UnsafeMutableRawPointer.allocate(byteCount: Int(propertySize), alignment: MemoryLayout<AudioBufferList>.alignment)
-    defer { bufferListPointer.deallocate() }
+    let rawPointer = UnsafeMutableRawPointer.allocate(
+        byteCount: Int(propertySize),
+        alignment: MemoryLayout<AudioBufferList>.alignment
+    )
+    defer { rawPointer.deallocate() }
 
-    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &propertySize, bufferListPointer) == noErr else {
+    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &propertySize, rawPointer) == noErr else {
         return 0
     }
 
-    let audioBufferList = bufferListPointer.assumingMemoryBound(to: AudioBufferList.self)
-    
-    var totalChannels = 0
-    let bufferCount = Int(audioBufferList.pointee.mNumberBuffers)
+    let bufferList = rawPointer.assumingMemoryBound(to: AudioBufferList.self)
+    let audioBuffers = UnsafeMutableAudioBufferListPointer(bufferList)
 
-    if bufferCount == 1 {
-        totalChannels = Int(audioBufferList.pointee.mBuffers.mNumberChannels)
-    } else {
-        let buffersPtr = withUnsafePointer(to: &audioBufferList.pointee.mBuffers) { ptr in
-            UnsafeBufferPointer(start: ptr, count: bufferCount)
-        }
-        
-        for i in 0..<bufferCount {
-            totalChannels += Int(buffersPtr[i].mNumberChannels)
-        }
-    }
-    
-    return totalChannels
+    return audioBuffers.reduce(0) { $0 + Int($1.mNumberChannels) }
 }
 
-func getPropertyValue(deviceID: AudioDeviceID, scope: AudioObjectPropertyScope, selectors: [(AudioObjectPropertySelector, String)]) -> Float32? {
+func getPropertyValue(
+    deviceID: AudioDeviceID,
+    scope: AudioObjectPropertyScope,
+    selectors: [(AudioObjectPropertySelector, String)]
+) -> Float32? {
     for (selector, description) in selectors {
         var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: scope,
             mElement: kAudioObjectPropertyElementMain
         )
+
         if AudioObjectHasProperty(deviceID, &address) {
             var value: Float32 = 0.0
             var size = UInt32(MemoryLayout.size(ofValue: value))
@@ -128,6 +142,7 @@ func getPropertyValue(deviceID: AudioDeviceID, scope: AudioObjectPropertyScope, 
             }
         }
     }
+
     return nil
 }
 
@@ -135,67 +150,70 @@ func getVolumeForChannel(deviceID: AudioDeviceID, channel: UInt32, scope: AudioO
     let volumeSelectors: [(AudioObjectPropertySelector, String)] = [
         (kAudioDevicePropertyVolumeScalar, "Volume Scalar"),
         (kAudioDevicePropertyVolumeDecibels, "Volume Decibels"),
-        (fourCharCode("gain"), "Gain"),
-        (fourCharCode("gain"), "Gain Scalar")
+        (fourCharCode("gain"), "Gain")
     ]
-    
+
     for (selector, description) in volumeSelectors {
         var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: scope,
             mElement: channel
         )
-        
+
         if AudioObjectHasProperty(deviceID, &address) {
             var value: Float32 = 0
             var size = UInt32(MemoryLayout<Float32>.size)
-            
+
             if AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr {
                 log("Successfully got \(description) for channel \(channel): \(value)", isDebug: true)
                 return value
             }
         }
     }
-    
+
     return nil
 }
 
 func getVolumeWithFallback(deviceID: AudioDeviceID, isInput: Bool) -> [Float32]? {
     let scope: AudioObjectPropertyScope = isInput ? kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput
-    
-    if let mainVolume: Float32 = getPropertyValue(deviceID: deviceID, scope: scope, selectors: [
-        (kAudioDevicePropertyVolumeScalar, "Volume Scalar"),
-        (kAudioDevicePropertyVolumeDecibels, "Volume Decibels")
-    ]) {
+
+    if let mainVolume = getPropertyValue(
+        deviceID: deviceID,
+        scope: scope,
+        selectors: [
+            (kAudioDevicePropertyVolumeScalar, "Volume Scalar"),
+            (kAudioDevicePropertyVolumeDecibels, "Volume Decibels")
+        ]
+    ) {
         return [mainVolume]
     }
-    
-    if let mainGain: Float32 = getPropertyValue(deviceID: deviceID, scope: scope, selectors: [
-        (fourCharCode("gain"), "Gain"),
-        (fourCharCode("gain"), "Gain Scalar")
-    ]) {
+
+    if let mainGain = getPropertyValue(
+        deviceID: deviceID,
+        scope: scope,
+        selectors: [
+            (fourCharCode("gain"), "Gain")
+        ]
+    ) {
         return [mainGain]
     }
-    
+
     let channelCount = getChannelCount(deviceID: deviceID, scope: scope)
     guard channelCount > 0 else {
         return nil
     }
-    
-    var volumes: [Float32] = []
-    for channel in 1...UInt32(channelCount) {
-        if let vol = getVolumeForChannel(deviceID: deviceID, channel: channel, scope: scope) {
-            volumes.append(vol)
-        } else {
-            volumes.append(-1.0)
-        }
+
+    let volumes = (1...UInt32(channelCount)).compactMap {
+        getVolumeForChannel(deviceID: deviceID, channel: $0, scope: scope)
     }
-    
-    let validVolumes = volumes.filter { $0 >= 0.0 && $0 <= 1.0 }
-    return validVolumes.isEmpty ? nil : volumes
+
+    return volumes.isEmpty ? nil : volumes
 }
 
 func setChannelVolume(deviceID: AudioDeviceID, volumes: [Float32], scope: AudioObjectPropertyScope) -> Bool {
+    var foundSettableChannel = false
+    var allSettableChannelsSucceeded = true
+
     for (index, volume) in volumes.enumerated() {
         let channel = UInt32(index + 1)
         var address = AudioObjectPropertyAddress(
@@ -203,7 +221,7 @@ func setChannelVolume(deviceID: AudioDeviceID, volumes: [Float32], scope: AudioO
             mScope: scope,
             mElement: channel
         )
-        
+
         var isSettable: DarwinBoolean = false
         guard AudioObjectHasProperty(deviceID, &address),
               AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr,
@@ -211,16 +229,26 @@ func setChannelVolume(deviceID: AudioDeviceID, volumes: [Float32], scope: AudioO
             log("Volume property not available or not settable for channel \(channel)", isError: true)
             continue
         }
-        
+
+        foundSettableChannel = true
+
         var value = volume
-        if AudioObjectSetPropertyData(deviceID, &address, 0, nil, UInt32(MemoryLayout.size(ofValue: value)), &value) == noErr {
+        if AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout.size(ofValue: value)),
+            &value
+        ) == noErr {
             log("Successfully set volume for channel \(channel) to \(volume)", isDebug: true)
         } else {
             log("Failed to set volume for channel \(channel)", isError: true)
-            return false
+            allSettableChannelsSucceeded = false
         }
     }
-    return true
+
+    return foundSettableChannel && allSettableChannelsSucceeded
 }
 
 func getMuteState(deviceID: AudioDeviceID, isInput: Bool) -> Bool? {
@@ -230,11 +258,11 @@ func getMuteState(deviceID: AudioDeviceID, isInput: Bool) -> Bool? {
         mScope: scope,
         mElement: kAudioObjectPropertyElementMain
     )
-    
+
     if AudioObjectHasProperty(deviceID, &address) {
         var muteState: UInt32 = 0
         var propertySize = UInt32(MemoryLayout<UInt32>.size)
-        
+
         let status = AudioObjectGetPropertyData(
             deviceID,
             &address,
@@ -243,7 +271,7 @@ func getMuteState(deviceID: AudioDeviceID, isInput: Bool) -> Bool? {
             &propertySize,
             &muteState
         )
-        
+
         if status == noErr {
             return muteState != 0
         } else {
@@ -252,7 +280,7 @@ func getMuteState(deviceID: AudioDeviceID, isInput: Bool) -> Bool? {
     } else {
         log("Device does not support mute property", isError: true)
     }
-    
+
     return nil
 }
 
@@ -263,11 +291,11 @@ func setMuteState(deviceID: AudioDeviceID, muted: Bool, isInput: Bool) -> Bool {
         mScope: scope,
         mElement: kAudioObjectPropertyElementMain
     )
-    
+
     if AudioObjectHasProperty(deviceID, &address) {
         var isSettable: DarwinBoolean = false
         let settableStatus = AudioObjectIsPropertySettable(deviceID, &address, &isSettable)
-        
+
         if settableStatus == noErr && isSettable.boolValue {
             var muteState: UInt32 = muted ? 1 : 0
             let status = AudioObjectSetPropertyData(
@@ -278,9 +306,9 @@ func setMuteState(deviceID: AudioDeviceID, muted: Bool, isInput: Bool) -> Bool {
                 UInt32(MemoryLayout<UInt32>.size),
                 &muteState
             )
-            
+
             if status == noErr {
-                print("Successfully \(muted ? "muted" : "unmuted") the device")
+                log("Successfully \(muted ? "muted" : "unmuted") the device", isDebug: true)
                 return true
             } else {
                 log("Failed to set mute state: \(status)", isError: true)
@@ -291,14 +319,14 @@ func setMuteState(deviceID: AudioDeviceID, muted: Bool, isInput: Bool) -> Bool {
     } else {
         log("Device does not support mute property", isError: true)
     }
-    
+
     return false
 }
 
 func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
     log("Device capabilities - Input: \(deviceType.isInput), Output: \(deviceType.isOutput)", isDebug: true)
-    
+
     let isInput: Bool
     if let type = type {
         guard let inputType = parseTypeArgument(type) else {
@@ -306,7 +334,7 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
             return false
         }
         isInput = inputType
-        
+
         if isInput && !deviceType.isInput {
             log("This device does not support input", isError: true)
             return false
@@ -317,12 +345,12 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     } else {
         isInput = !deviceType.isOutput && deviceType.isInput
     }
-    
+
     guard let currentMuteState = getMuteState(deviceID: deviceID, isInput: isInput) else {
         log("Unable to get current mute state", isError: true)
         return false
     }
-    
+
     let targetMuteState: Bool
     if let state = state?.lowercased() {
         switch state {
@@ -339,7 +367,7 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     } else {
         targetMuteState = !currentMuteState
     }
-    
+
     if targetMuteState != currentMuteState {
         return setMuteState(deviceID: deviceID, muted: targetMuteState, isInput: isInput)
     } else {
@@ -351,14 +379,14 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
 func getVolume(deviceID: AudioDeviceID, type: String?) {
     let deviceType = getDeviceType(deviceID: deviceID)
     let isInput: Bool
-    
+
     if let type = type {
         guard let inputType = parseTypeArgument(type) else {
             log("Invalid type. Specify 'input' or 'output'.", isError: true)
             return
         }
         isInput = inputType
-        
+
         if isInput && !deviceType.isInput {
             log("This device does not support input", isError: true)
             return
@@ -367,40 +395,36 @@ func getVolume(deviceID: AudioDeviceID, type: String?) {
             return
         }
     } else {
-        // default to output if available, otherwise input
         isInput = !deviceType.isOutput && deviceType.isInput
     }
-    
+
     guard let volumes = getVolumeWithFallback(deviceID: deviceID, isInput: isInput) else {
         log("No volume available for this device.", isError: true)
         return
     }
-    
-    var seen = Set<Float32>()
+
+    var seen = Set<String>()
     let uniqueVolumes = volumes.filter { vol in
-        if seen.contains(vol) {
-            return false
-        } else {
-            seen.insert(vol)
-            return true
-        }
+        let key = String(format: "%.4f", Double(vol))
+        return seen.insert(key).inserted
     }
-    
-    let volumeStrings = uniqueVolumes.map { "\($0)" }
-    print(volumeStrings.joined(separator: "\t"))
+
+    let volumeStrings = uniqueVolumes.map { String(format: "%.4f", Double($0)) }
+    out(volumeStrings.joined(separator: "\t"))
+
 }
 
 func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
     let deviceType = getDeviceType(deviceID: deviceID)
     let isInput: Bool
-    
+
     if let type = type {
         guard let inputType = parseTypeArgument(type) else {
             log("Invalid type. Specify 'input' or 'output'.", isError: true)
             return
         }
         isInput = inputType
-        
+
         if isInput && !deviceType.isInput {
             log("This device does not support input", isError: true)
             return
@@ -411,32 +435,38 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
     } else {
         isInput = !deviceType.isOutput && deviceType.isInput
     }
-    
+
     let scope: AudioObjectPropertyScope = isInput ? kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput
     let channelCount = getChannelCount(deviceID: deviceID, scope: scope)
-    
+
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioDevicePropertyVolumeScalar,
         mScope: scope,
         mElement: kAudioObjectPropertyElementMain
     )
-    
+
     if AudioObjectHasProperty(deviceID, &address) {
         var isSettable: DarwinBoolean = false
         if AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr, isSettable.boolValue {
             var newVolume = level
-            if AudioObjectSetPropertyData(deviceID, &address, 0, nil, UInt32(MemoryLayout.size(ofValue: newVolume)), &newVolume) == noErr {
+            if AudioObjectSetPropertyData(
+                deviceID,
+                &address,
+                0,
+                nil,
+                UInt32(MemoryLayout.size(ofValue: newVolume)),
+                &newVolume
+            ) == noErr {
                 log("Successfully set main volume to \(level)", isDebug: true)
                 return
             }
         }
     }
-    
-    // fallback to channel-based volume
+
     if channelCount > 0 {
         let volumes = [Float32](repeating: level, count: channelCount)
         if setChannelVolume(deviceID: deviceID, volumes: volumes, scope: scope) {
-            log("Successfully set volume for all \(channelCount) channels to \(level)", isDebug: true)
+            log("Successfully set volume for available channels to \(level)", isDebug: true)
         } else {
             log("Failed to set volume", isError: true)
         }
@@ -447,16 +477,13 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
 
 func resolveDevice(_ arg: String) -> AudioDeviceID? {
     if let id = UInt32(arg) {
-        if let deviceName = getDeviceName(deviceID: id) {
-            log("Selected device: \(deviceName)", isDebug: true)
-            return id
-        } else {
-            log("No device matching '\(arg)' was found.", isError: true)
-            exit(1)
+        guard getDeviceName(deviceID: id) != nil else {
+            return nil
         }
+        log("Selected device ID: \(id)", isDebug: true)
+        return id
     }
-    
-    // string-based search
+
     let lowerArg = arg.lowercased()
     let devices = getAllDevices()
     for device in devices {
@@ -465,9 +492,8 @@ func resolveDevice(_ arg: String) -> AudioDeviceID? {
             return device.id
         }
     }
-    
-    log("No device matching '\(arg)' was found.", isError: true)
-    exit(1)
+
+    return nil
 }
 
 func getAllDevices() -> [(id: AudioDeviceID, name: String, isInput: Bool, isOutput: Bool)] {
@@ -477,14 +503,22 @@ func getAllDevices() -> [(id: AudioDeviceID, name: String, isInput: Bool, isOutp
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
-    
+
     guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &propertySize) == noErr else {
         return []
     }
-    
+
     let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
     var deviceIDs = [AudioDeviceID](repeating: AudioDeviceID(), count: deviceCount)
-    guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &propertySize, &deviceIDs) == noErr else {
+
+    guard AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &propertySize,
+        &deviceIDs
+    ) == noErr else {
         return []
     }
 
@@ -494,45 +528,64 @@ func getAllDevices() -> [(id: AudioDeviceID, name: String, isInput: Bool, isOutp
         let deviceType = getDeviceType(deviceID: deviceID)
         results.append((id: deviceID, name: name, isInput: deviceType.isInput, isOutput: deviceType.isOutput))
     }
+
     return results
 }
 
-func parseCommandLine() -> Action {
-    let action = CommandLine.arguments[safe: 1]?.lowercased() ?? ""
+func parseGlobalOptions() -> [String] {
+    var remaining: [String] = []
+    for arg in CommandLine.arguments.dropFirst() {
+        switch arg {
+        case "-q", "--quiet":
+            isQuietEnabled = true
+        default:
+            remaining.append(arg)
+        }
+    }
+    return remaining
+}
 
-    if ["-h", "--help"].contains(action) {
+func parseCommandLine(arguments: [String]) -> Action {
+    let action = arguments[safe: 0]?.lowercased() ?? ""
+
+    if ["-h", "--help"].contains(action) || action.isEmpty {
         printUsage()
         exit(0)
     }
-    
+
     switch action {
     case "list":
         return .list
+
     case "get":
-        guard let arg = CommandLine.arguments[safe: 2], let deviceID = resolveDevice(arg) else {
-            return .invalid("Usage: volctl get <device_id|device_name> [type: input|output]")
+        guard let arg = arguments[safe: 1],
+              let deviceID = resolveDevice(arg) else {
+            return .invalid("Usage: volctl [-q] get <device_id|device_name> [type: input|output]")
         }
-        let type = CommandLine.arguments[safe: 3]
+        let type = arguments[safe: 2]
         return .get(deviceID: deviceID, type: type)
+
     case "set":
-        guard let arg = CommandLine.arguments[safe: 2],
-              let levelStr = CommandLine.arguments[safe: 3],
+        guard let arg = arguments[safe: 1],
+              let levelStr = arguments[safe: 2],
               let level = Float32(levelStr),
               level >= 0, level <= 1,
               let deviceID = resolveDevice(arg) else {
-            return .invalid("Usage: volctl set <device_id|device_name> <level (0.0-1.0)> [type: input|output]")
+            return .invalid("Usage: volctl [-q] set <device_id|device_name> <level (0.0-1.0)> [type: input|output]")
         }
-        
-        let type = CommandLine.arguments[safe: 4]
+
+        let type = arguments[safe: 3]
         return .set(deviceID: deviceID, level: level, type: type)
+
     case "mute":
-        guard let arg = CommandLine.arguments[safe: 2],
+        guard let arg = arguments[safe: 1],
               let deviceID = resolveDevice(arg) else {
-            return .invalid("Usage: volctl mute <device_id|device_name> [on|off|toggle] [type: input|output]")
+            return .invalid("Usage: volctl [-q] mute <device_id|device_name> [on|off|toggle] [type: input|output]")
         }
-        let state = CommandLine.arguments[safe: 3]
-        let type = CommandLine.arguments[safe: 4]
+        let state = arguments[safe: 2]
+        let type = arguments[safe: 3]
         return .mute(deviceID: deviceID, state: state, type: type)
+
     default:
         return .invalid("Invalid action. Use 'list', 'get', 'set', or 'mute'.")
     }
@@ -541,7 +594,7 @@ func parseCommandLine() -> Action {
 func listDevices() {
     var devices = getAllDevices()
     devices.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    
+
     for device in devices {
         let typeDescription: String
         if device.isInput && device.isOutput {
@@ -553,44 +606,54 @@ func listDevices() {
         } else {
             typeDescription = "Unknown"
         }
-        print("\(device.id)\t\(typeDescription)\t\(device.name)")
+        out("\(device.id)\t\(typeDescription)\t\(device.name)")
     }
 }
 
 func printUsage() {
-    print("""
-    Get or Set volume levels or mute state for macOS audio devices
-    Usage: volctl <command> [args]
+    out("""
+    Get or set volume levels or mute state for macOS audio devices
+    Usage: volctl [-q] <command> [args]
+
+    Global options:
+        -q, --quiet                    Suppress all stdout/stderr output
 
     Commands:
         list                           List all audio devices (tab-separated)
-        get <device> [type]            Get volume level for a device (type is optional)
+        get <device> [type]            Get volume level for a device
         set <device> <level> [type]    Set volume level for a device (0.0-1.0)
-        mute <device> [on|off] [type]  Control mute state (omitting action will toggle)
+        mute <device> [state] [type]   Control mute state; state is on|off|toggle
 
     Notes:
-        <device> can be an ID number or a string (partial ok)
+        <device> can be an ID number or a string (partial match is ok)
         When using a string to select device, the first match will be used
+        [type] is optional: input | output
     """)
 }
 
-if CommandLine.argc < 2 {
+let positionalArgs = parseGlobalOptions()
+
+if positionalArgs.isEmpty {
     printUsage()
     exit(0)
 }
 
-let action = parseCommandLine()
+let action = parseCommandLine(arguments: positionalArgs)
 
 switch action {
 case .list:
     listDevices()
+
 case .get(let deviceID, let type):
     getVolume(deviceID: deviceID, type: type)
+
 case .set(let deviceID, let level, let type):
     setVolume(deviceID: deviceID, level: level, type: type)
+
 case .mute(let deviceID, let state, let type):
     exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? 0 : 1)
+
 case .invalid(let error):
-    log(error, isError: true)
+    err(error)
     exit(1)
 }
