@@ -1,6 +1,8 @@
 import CoreAudio
 import Foundation
 
+let programVersion = "1.1.3"
+
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
@@ -27,14 +29,6 @@ func writeMessage(_ message: String, to handle: FileHandle, terminator: String =
     if let data = (message + terminator).data(using: .utf8) {
         handle.write(data)
     }
-}
-
-func out(_ message: String, terminator: String = "\n") {
-    writeMessage(message, to: .standardOutput, terminator: terminator)
-}
-
-func err(_ message: String, terminator: String = "\n") {
-    writeMessage(message, to: .standardError, terminator: terminator)
 }
 
 func log(_ message: String, isDebug: Bool = false, isError: Bool = false, terminator: String = "\n") {
@@ -410,7 +404,7 @@ func getVolume(deviceID: AudioDeviceID, type: String?) {
     }
 
     let volumeStrings = uniqueVolumes.map { String(format: "%.4f", Double($0)) }
-    out(volumeStrings.joined(separator: "\t"))
+    log(volumeStrings.joined(separator: "\t"))
 
 }
 
@@ -475,7 +469,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
     }
 }
 
-func resolveDevice(_ arg: String) -> AudioDeviceID? {
+func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
     if let id = UInt32(arg) {
         guard getDeviceName(deviceID: id) != nil else {
             return nil
@@ -484,13 +478,26 @@ func resolveDevice(_ arg: String) -> AudioDeviceID? {
         return id
     }
 
+    let requestedIsInput = type.flatMap(parseTypeArgument)
     let lowerArg = arg.lowercased()
     let devices = getAllDevices()
+
     for device in devices {
-        if device.name.lowercased().contains(lowerArg) {
-            log("Resolved '\(arg)' => \(device.name) (id: \(device.id))", isDebug: true)
-            return device.id
+        guard device.name.lowercased().contains(lowerArg) else {
+            continue
         }
+
+        if let requestedIsInput = requestedIsInput {
+            if requestedIsInput && !device.isInput {
+                continue
+            }
+            if !requestedIsInput && !device.isOutput {
+                continue
+            }
+        }
+
+        log("Resolved '\(arg)' => \(device.name) (id: \(device.id))", isDebug: true)
+        return device.id
     }
 
     return nil
@@ -536,6 +543,9 @@ func parseGlobalOptions() -> [String] {
     var remaining: [String] = []
     for arg in CommandLine.arguments.dropFirst() {
         switch arg {
+        case "-v", "--version":
+            log(programVersion)
+            exit(0)
         case "-q", "--quiet":
             isQuietEnabled = true
         default:
@@ -558,32 +568,43 @@ func parseCommandLine(arguments: [String]) -> Action {
         return .list
 
     case "get":
+        let type = arguments[safe: 2]
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg) else {
+              let deviceID = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] get <device_id|device_name> [type: input|output]")
         }
-        let type = arguments[safe: 2]
         return .get(deviceID: deviceID, type: type)
 
     case "set":
+        let type = arguments[safe: 3]
         guard let arg = arguments[safe: 1],
               let levelStr = arguments[safe: 2],
               let level = Float32(levelStr),
               level >= 0, level <= 1,
-              let deviceID = resolveDevice(arg) else {
+              let deviceID = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] set <device_id|device_name> <level (0.0-1.0)> [type: input|output]")
         }
 
-        let type = arguments[safe: 3]
         return .set(deviceID: deviceID, level: level, type: type)
 
     case "mute":
+        let stateOrType = arguments[safe: 2]
+        let state: String?
+        let type: String?
+
+        if let value = stateOrType, parseTypeArgument(value) != nil {
+            state = nil
+            type = value
+        } else {
+            state = stateOrType
+            type = arguments[safe: 3]
+        }
+
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg) else {
+              let deviceID = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] mute <device_id|device_name> [on|off|toggle] [type: input|output]")
         }
-        let state = arguments[safe: 2]
-        let type = arguments[safe: 3]
+
         return .mute(deviceID: deviceID, state: state, type: type)
 
     default:
@@ -606,17 +627,18 @@ func listDevices() {
         } else {
             typeDescription = "Unknown"
         }
-        out("\(device.id)\t\(typeDescription)\t\(device.name)")
+        log("\(device.id)\t\(typeDescription)\t\(device.name)")
     }
 }
 
 func printUsage() {
-    out("""
+    log("""
     Get or set volume levels or mute state for macOS audio devices
     Usage: volctl [-q] <command> [args]
 
     Global options:
         -q, --quiet                    Suppress all stdout/stderr output
+        -v, --version                  Show version
 
     Commands:
         list                           List all audio devices (tab-separated)
@@ -625,9 +647,10 @@ func printUsage() {
         mute <device> [state] [type]   Control mute state; state is on|off|toggle
 
     Notes:
-        <device> can be an ID number or a string (partial match is ok)
-        When using a string to select device, the first match will be used
-        [type] is optional: input | output
+        - <device> can be an ID number or a string (partial match is ok)
+        - When using a string to select device, the first matching device is used
+        - [type] is optional: input | output
+          (if supplied, name matching is limited to devices supporting that direction)
     """)
 }
 
@@ -654,6 +677,6 @@ case .mute(let deviceID, let state, let type):
     exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? 0 : 1)
 
 case .invalid(let error):
-    err(error)
+    log(error, isError: true)
     exit(1)
 }
