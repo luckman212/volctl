@@ -471,6 +471,44 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     return false
 }
 
+func getDefaultDevice(isInput: Bool) -> AudioDeviceID? {
+    let direction = isInput ? "input" : "output"
+    var address = AudioObjectPropertyAddress(
+        mSelector: isInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var deviceID: AudioDeviceID = kAudioObjectUnknown
+    var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+    let status = AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &propertySize,
+        &deviceID
+    )
+
+    guard status == noErr else {
+        log("Error retrieving default \(direction) device: \(status)", isError: true)
+        return nil
+    }
+
+    guard propertySize == UInt32(MemoryLayout<AudioDeviceID>.size) else {
+        log("Invalid data size for default \(direction) device: \(propertySize)", isError: true)
+        return nil
+    }
+
+    guard deviceID != kAudioObjectUnknown else {
+        log("No default \(direction) device is available.", isError: true)
+        return nil
+    }
+
+    log("Resolved default \(direction) device to ID: \(deviceID)", isDebug: true)
+    return deviceID
+}
+
 func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, type: String?)? {
     let requestedIsInput = type.flatMap(parseTypeArgument)
     guard type == nil || requestedIsInput != nil else {
