@@ -13,6 +13,7 @@ Usage: volctl [-q] <command> [args]
 
 Global options:
     -q, --quiet                    Suppress all stdout/stderr output
+    -v, --version                  Show version
 
 Commands:
     list                           List all audio devices (tab-separated)
