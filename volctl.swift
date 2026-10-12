@@ -705,9 +705,14 @@ func printUsage() {
 
     Notes:
         - <device> can be an ID number or a string (partial match is ok)
+        - Device ID 0 selects the current default device
+          (output unless [type] is input; not the separate system-sound output)
+        - Selecting a default device does not change the macOS defaults
         - When using a string to select device, the first matching device is used
         - [type] is optional: input | output
           (if supplied, name matching is limited to devices supporting that direction)
+        - get, set, and mute return 0 on success or 1 on failure
+          (quiet mode suppresses messages without changing the exit status)
     """)
 }
 
