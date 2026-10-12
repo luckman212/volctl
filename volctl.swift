@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-let programVersion = "1.1.3"
+let programVersion = "1.2.0"
 
 extension Array {
     subscript(safe index: Int) -> Element? {
