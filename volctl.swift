@@ -472,6 +472,12 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
 }
 
 func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
+    let requestedIsInput = type.flatMap(parseTypeArgument)
+    guard type == nil || requestedIsInput != nil else {
+        log("Invalid type. Specify 'input' or 'output'.", isError: true)
+        return nil
+    }
+
     if let id = UInt32(arg) {
         guard getDeviceName(deviceID: id) != nil else {
             return nil
@@ -480,7 +486,6 @@ func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
         return id
     }
 
-    let requestedIsInput = type.flatMap(parseTypeArgument)
     let lowerArg = arg.lowercased()
     let devices = getAllDevices()
 
