@@ -48,6 +48,32 @@ func parseTypeArgument(_ type: String) -> Bool? {
     }
 }
 
+func resolveDeviceDirection(
+    deviceType: (isInput: Bool, isOutput: Bool),
+    type: String?
+) -> Bool? {
+    guard let type = type else {
+        return !deviceType.isOutput && deviceType.isInput
+    }
+
+    guard let isInput = parseTypeArgument(type) else {
+        log("Invalid type. Specify 'input' or 'output'.", isError: true)
+        return nil
+    }
+
+    if isInput && !deviceType.isInput {
+        log("This device does not support input", isError: true)
+        return nil
+    }
+
+    if !isInput && !deviceType.isOutput {
+        log("This device does not support output", isError: true)
+        return nil
+    }
+
+    return isInput
+}
+
 func fourCharCode(_ string: String) -> AudioObjectPropertySelector {
     guard string.count == 4 else { return 0 }
     return string.utf8.reduce(0) { ($0 << 8) | UInt32($1) }
@@ -321,23 +347,8 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     let deviceType = getDeviceType(deviceID: deviceID)
     log("Device capabilities - Input: \(deviceType.isInput), Output: \(deviceType.isOutput)", isDebug: true)
 
-    let isInput: Bool
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return false
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return false
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return false
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     guard let currentMuteState = getMuteState(deviceID: deviceID, isInput: isInput) else {
@@ -372,24 +383,9 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
 
 func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
-    let isInput: Bool
 
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return false
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return false
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return false
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     guard let volumes = getVolumeWithFallback(deviceID: deviceID, isInput: isInput) else {
@@ -410,24 +406,9 @@ func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
 
 func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
-    let isInput: Bool
 
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return false
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return false
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return false
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     let scope: AudioObjectPropertyScope = isInput ? kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput
