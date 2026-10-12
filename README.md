@@ -8,7 +8,7 @@ In contrast to the often suggested `osascript -e "output volume of (get volume s
 
 **N.B.** Some devices are "hybrid" and register as both an Input and Output device. For such devices, an additional `type` argument can be supplied to indicate which level you intend to operate on.
 
-```
+```text
 Usage: volctl [-q] <command> [args]
 
 Global options:
@@ -42,13 +42,13 @@ Download the latest [release](https://github.com/luckman212/volctl/releases) and
 
 Or, to compile from source, clone the repo and run:
 
-```
+```bash
 swiftc -O -o volctl volctl.swift
 ```
 
 ### Examples
 
-```
+```bash
 # Read the default output or input level
 volctl get 0
 volctl get 0 input
@@ -62,7 +62,7 @@ volctl mute 0 toggle
 volctl mute 0 on input
 ```
 
-```
+```console
 $ volctl list
 61  Output  Audioengine 2+
 140 Output  DELL S2721QS
@@ -76,12 +76,12 @@ $ volctl list
 127 In/Out  ZoomAudioDevice
 ```
 
-```
+```console
 $ volctl get logi
 0.8
 ```
 
-```
+```console
 $ DEBUG=true volctl set logi 0.65
 Resolved 'logi' => Logitech Webcam C925e (id: 134)
 Successfully set main volume to 0.65
