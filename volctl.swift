@@ -519,6 +519,16 @@ func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, ty
     }
 
     if let id = UInt32(arg) {
+        if id == kAudioObjectUnknown {
+            let isInput = requestedIsInput ?? false
+
+            guard let deviceID = getDefaultDevice(isInput: isInput) else {
+                return nil
+            }
+
+            return (deviceID, isInput ? "input" : "output")
+        }
+
         guard getDeviceName(deviceID: id) != nil else {
             return nil
         }
