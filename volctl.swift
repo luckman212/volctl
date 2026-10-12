@@ -370,23 +370,23 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     }
 }
 
-func getVolume(deviceID: AudioDeviceID, type: String?) {
+func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
     let isInput: Bool
 
     if let type = type {
         guard let inputType = parseTypeArgument(type) else {
             log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return
+            return false
         }
         isInput = inputType
 
         if isInput && !deviceType.isInput {
             log("This device does not support input", isError: true)
-            return
+            return false
         } else if !isInput && !deviceType.isOutput {
             log("This device does not support output", isError: true)
-            return
+            return false
         }
     } else {
         isInput = !deviceType.isOutput && deviceType.isInput
@@ -394,7 +394,7 @@ func getVolume(deviceID: AudioDeviceID, type: String?) {
 
     guard let volumes = getVolumeWithFallback(deviceID: deviceID, isInput: isInput) else {
         log("No volume available for this device.", isError: true)
-        return
+        return false
     }
 
     var seen = Set<String>()
@@ -405,7 +405,7 @@ func getVolume(deviceID: AudioDeviceID, type: String?) {
 
     let volumeStrings = uniqueVolumes.map { String(format: "%.4f", Double($0)) }
     log(volumeStrings.joined(separator: "\t"))
-
+    return true
 }
 
 func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
@@ -668,7 +668,7 @@ case .list:
     listDevices()
 
 case .get(let deviceID, let type):
-    getVolume(deviceID: deviceID, type: type)
+    exit(getVolume(deviceID: deviceID, type: type) ? 0 : 1)
 
 case .set(let deviceID, let level, let type):
     setVolume(deviceID: deviceID, level: level, type: type)
