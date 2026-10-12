@@ -724,21 +724,25 @@ if positionalArgs.isEmpty {
 }
 
 let action = parseCommandLine(arguments: positionalArgs)
+let succeeded: Bool
 
 switch action {
 case .list:
     listDevices()
+    succeeded = true
 
 case .get(let deviceID, let type):
-    exit(getVolume(deviceID: deviceID, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
+    succeeded = getVolume(deviceID: deviceID, type: type)
 
 case .set(let deviceID, let level, let type):
-    exit(setVolume(deviceID: deviceID, level: level, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
+    succeeded = setVolume(deviceID: deviceID, level: level, type: type)
 
 case .mute(let deviceID, let state, let type):
-    exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
+    succeeded = handleMuteCommand(deviceID: deviceID, state: state, type: type)
 
 case .invalid(let error):
     log(error, isError: true)
-    exit(EXIT_FAILURE)
+    succeeded = false
 }
+
+exit(succeeded ? EXIT_SUCCESS : EXIT_FAILURE)
