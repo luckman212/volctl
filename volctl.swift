@@ -408,23 +408,23 @@ func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
     return true
 }
 
-func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
+func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
     let isInput: Bool
 
     if let type = type {
         guard let inputType = parseTypeArgument(type) else {
             log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return
+            return false
         }
         isInput = inputType
 
         if isInput && !deviceType.isInput {
             log("This device does not support input", isError: true)
-            return
+            return false
         } else if !isInput && !deviceType.isOutput {
             log("This device does not support output", isError: true)
-            return
+            return false
         }
     } else {
         isInput = !deviceType.isOutput && deviceType.isInput
@@ -452,7 +452,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
                 &newVolume
             ) == noErr {
                 log("Successfully set main volume to \(level)", isDebug: true)
-                return
+                return true
             }
         }
     }
@@ -461,12 +461,14 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
         let volumes = [Float32](repeating: level, count: channelCount)
         if setChannelVolume(deviceID: deviceID, volumes: volumes, scope: scope) {
             log("Successfully set volume for available channels to \(level)", isDebug: true)
+            return true
         } else {
             log("Failed to set volume", isError: true)
         }
     } else {
         log("No channels available to set volume on.", isError: true)
     }
+    return false
 }
 
 func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
@@ -671,7 +673,7 @@ case .get(let deviceID, let type):
     exit(getVolume(deviceID: deviceID, type: type) ? 0 : 1)
 
 case .set(let deviceID, let level, let type):
-    setVolume(deviceID: deviceID, level: level, type: type)
+    exit(setVolume(deviceID: deviceID, level: level, type: type) ? 0 : 1)
 
 case .mute(let deviceID, let state, let type):
     exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? 0 : 1)
