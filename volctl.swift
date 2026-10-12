@@ -471,7 +471,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     return false
 }
 
-func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
+func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, type: String?)? {
     let requestedIsInput = type.flatMap(parseTypeArgument)
     guard type == nil || requestedIsInput != nil else {
         log("Invalid type. Specify 'input' or 'output'.", isError: true)
@@ -483,7 +483,7 @@ func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
             return nil
         }
         log("Selected device ID: \(id)", isDebug: true)
-        return id
+        return (id, type)
     }
 
     let lowerArg = arg.lowercased()
@@ -504,7 +504,7 @@ func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
         }
 
         log("Resolved '\(arg)' => \(device.name) (id: \(device.id))", isDebug: true)
-        return device.id
+        return (device.id, type)
     }
 
     return nil
@@ -577,10 +577,10 @@ func parseCommandLine(arguments: [String]) -> Action {
     case "get":
         let type = arguments[safe: 2]
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] get <device_id|device_name> [type: input|output]")
         }
-        return .get(deviceID: deviceID, type: type)
+        return .get(deviceID: device.id, type: device.type)
 
     case "set":
         let type = arguments[safe: 3]
@@ -588,11 +588,11 @@ func parseCommandLine(arguments: [String]) -> Action {
               let levelStr = arguments[safe: 2],
               let level = Float32(levelStr),
               level >= 0, level <= 1,
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] set <device_id|device_name> <level (0.0-1.0)> [type: input|output]")
         }
 
-        return .set(deviceID: deviceID, level: level, type: type)
+        return .set(deviceID: device.id, level: level, type: device.type)
 
     case "mute":
         let stateOrType = arguments[safe: 2]
@@ -608,11 +608,11 @@ func parseCommandLine(arguments: [String]) -> Action {
         }
 
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] mute <device_id|device_name> [on|off|toggle] [type: input|output]")
         }
 
-        return .mute(deviceID: deviceID, state: state, type: type)
+        return .mute(deviceID: device.id, state: state, type: device.type)
 
     default:
         return .invalid("Invalid action. Use 'list', 'get', 'set', or 'mute'.")
