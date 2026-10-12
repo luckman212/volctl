@@ -718,11 +718,6 @@ func printUsage() {
 
 let positionalArgs = parseGlobalOptions()
 
-if positionalArgs.isEmpty {
-    printUsage()
-    exit(EXIT_SUCCESS)
-}
-
 let action = parseCommandLine(arguments: positionalArgs)
 let succeeded: Bool
 
