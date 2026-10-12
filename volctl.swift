@@ -468,6 +468,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     } else {
         log("No channels available to set volume on.", isError: true)
     }
+
     return false
 }
 
@@ -511,6 +512,7 @@ func getDefaultDevice(isInput: Bool) -> AudioDeviceID? {
 
 func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, type: String?)? {
     let requestedIsInput = type.flatMap(parseTypeArgument)
+
     guard type == nil || requestedIsInput != nil else {
         log("Invalid type. Specify 'input' or 'output'.", isError: true)
         return nil
