@@ -602,7 +602,7 @@ func parseGlobalOptions() -> [String] {
         switch arg {
         case "-v", "--version":
             log(programVersion)
-            exit(0)
+            exit(EXIT_SUCCESS)
         case "-q", "--quiet":
             isQuietEnabled = true
         default:
@@ -617,7 +617,7 @@ func parseCommandLine(arguments: [String]) -> Action {
 
     if ["-h", "--help"].contains(action) || action.isEmpty {
         printUsage()
-        exit(0)
+        exit(EXIT_SUCCESS)
     }
 
     switch action {
@@ -720,7 +720,7 @@ let positionalArgs = parseGlobalOptions()
 
 if positionalArgs.isEmpty {
     printUsage()
-    exit(0)
+    exit(EXIT_SUCCESS)
 }
 
 let action = parseCommandLine(arguments: positionalArgs)
@@ -730,15 +730,15 @@ case .list:
     listDevices()
 
 case .get(let deviceID, let type):
-    exit(getVolume(deviceID: deviceID, type: type) ? 0 : 1)
+    exit(getVolume(deviceID: deviceID, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
 
 case .set(let deviceID, let level, let type):
-    exit(setVolume(deviceID: deviceID, level: level, type: type) ? 0 : 1)
+    exit(setVolume(deviceID: deviceID, level: level, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
 
 case .mute(let deviceID, let state, let type):
-    exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? 0 : 1)
+    exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? EXIT_SUCCESS : EXIT_FAILURE)
 
 case .invalid(let error):
     log(error, isError: true)
-    exit(1)
+    exit(EXIT_FAILURE)
 }
