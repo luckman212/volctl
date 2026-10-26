@@ -1,4 +1,4 @@
-<p align="left"><img height=160 src="./icon.png" /></p>
+<p align="left"><img height=96 src="./icon.png" /></p>
 
 # volctl
 
