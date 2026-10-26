@@ -61,14 +61,9 @@ volctl set 0 0.5 input
 # Toggle the default output's mute state or mute the default input
 volctl mute 0 toggle
 volctl mute 0 on input
-<<<<<<< HEAD
-=======
 ```
 
->>>>>>> 77eef42 (prep for release 1.2.1)
 ```
-
-```console
 $ volctl list
 61  Output  Audioengine 2+
 140 Output  DELL S2721QS
@@ -82,12 +77,12 @@ $ volctl list
 127 In/Out  ZoomAudioDevice
 ```
 
-```console
+```
 $ volctl get logi
 0.8
 ```
 
-```console
+```
 $ DEBUG=true volctl set logi 0.65
 Resolved 'logi' => Logitech Webcam C925e (id: 134)
 Successfully set main volume to 0.65
