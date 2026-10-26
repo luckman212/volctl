@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-let programVersion = "1.1.3"
+let programVersion = "1.2.0"
 
 extension Array {
     subscript(safe index: Int) -> Element? {
@@ -46,6 +46,32 @@ func parseTypeArgument(_ type: String) -> Bool? {
     default:
         return nil
     }
+}
+
+func resolveDeviceDirection(
+    deviceType: (isInput: Bool, isOutput: Bool),
+    type: String?
+) -> Bool? {
+    guard let type = type else {
+        return !deviceType.isOutput && deviceType.isInput
+    }
+
+    guard let isInput = parseTypeArgument(type) else {
+        log("Invalid type. Specify 'input' or 'output'.", isError: true)
+        return nil
+    }
+
+    if isInput && !deviceType.isInput {
+        log("This device does not support input", isError: true)
+        return nil
+    }
+
+    if !isInput && !deviceType.isOutput {
+        log("This device does not support output", isError: true)
+        return nil
+    }
+
+    return isInput
 }
 
 func fourCharCode(_ string: String) -> AudioObjectPropertySelector {
@@ -321,23 +347,8 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     let deviceType = getDeviceType(deviceID: deviceID)
     log("Device capabilities - Input: \(deviceType.isInput), Output: \(deviceType.isOutput)", isDebug: true)
 
-    let isInput: Bool
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return false
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return false
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return false
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     guard let currentMuteState = getMuteState(deviceID: deviceID, isInput: isInput) else {
@@ -370,31 +381,16 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
     }
 }
 
-func getVolume(deviceID: AudioDeviceID, type: String?) {
+func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
-    let isInput: Bool
 
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     guard let volumes = getVolumeWithFallback(deviceID: deviceID, isInput: isInput) else {
         log("No volume available for this device.", isError: true)
-        return
+        return false
     }
 
     var seen = Set<String>()
@@ -405,29 +401,14 @@ func getVolume(deviceID: AudioDeviceID, type: String?) {
 
     let volumeStrings = uniqueVolumes.map { String(format: "%.4f", Double($0)) }
     log(volumeStrings.joined(separator: "\t"))
-
+    return true
 }
 
-func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
+func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
     let deviceType = getDeviceType(deviceID: deviceID)
-    let isInput: Bool
 
-    if let type = type {
-        guard let inputType = parseTypeArgument(type) else {
-            log("Invalid type. Specify 'input' or 'output'.", isError: true)
-            return
-        }
-        isInput = inputType
-
-        if isInput && !deviceType.isInput {
-            log("This device does not support input", isError: true)
-            return
-        } else if !isInput && !deviceType.isOutput {
-            log("This device does not support output", isError: true)
-            return
-        }
-    } else {
-        isInput = !deviceType.isOutput && deviceType.isInput
+    guard let isInput = resolveDeviceDirection(deviceType: deviceType, type: type) else {
+        return false
     }
 
     let scope: AudioObjectPropertyScope = isInput ? kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput
@@ -452,7 +433,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
                 &newVolume
             ) == noErr {
                 log("Successfully set main volume to \(level)", isDebug: true)
-                return
+                return true
             }
         }
     }
@@ -461,24 +442,81 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) {
         let volumes = [Float32](repeating: level, count: channelCount)
         if setChannelVolume(deviceID: deviceID, volumes: volumes, scope: scope) {
             log("Successfully set volume for available channels to \(level)", isDebug: true)
+            return true
         } else {
             log("Failed to set volume", isError: true)
         }
     } else {
         log("No channels available to set volume on.", isError: true)
     }
+
+    return false
 }
 
-func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
+func getDefaultDevice(isInput: Bool) -> AudioDeviceID? {
+    let direction = isInput ? "input" : "output"
+    var address = AudioObjectPropertyAddress(
+        mSelector: isInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var deviceID: AudioDeviceID = kAudioObjectUnknown
+    var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+    let status = AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &propertySize,
+        &deviceID
+    )
+
+    guard status == noErr else {
+        log("Error retrieving default \(direction) device: \(status)", isError: true)
+        return nil
+    }
+
+    guard propertySize == UInt32(MemoryLayout<AudioDeviceID>.size) else {
+        log("Invalid data size for default \(direction) device: \(propertySize)", isError: true)
+        return nil
+    }
+
+    guard deviceID != kAudioObjectUnknown else {
+        log("No default \(direction) device is available.", isError: true)
+        return nil
+    }
+
+    log("Resolved default \(direction) device to ID: \(deviceID)", isDebug: true)
+    return deviceID
+}
+
+func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, type: String?)? {
+    let requestedIsInput = type.flatMap(parseTypeArgument)
+
+    guard type == nil || requestedIsInput != nil else {
+        log("Invalid type. Specify 'input' or 'output'.", isError: true)
+        return nil
+    }
+
     if let id = UInt32(arg) {
+        if id == kAudioObjectUnknown {
+            let isInput = requestedIsInput ?? false
+
+            guard let deviceID = getDefaultDevice(isInput: isInput) else {
+                return nil
+            }
+
+            return (deviceID, isInput ? "input" : "output")
+        }
+
         guard getDeviceName(deviceID: id) != nil else {
             return nil
         }
         log("Selected device ID: \(id)", isDebug: true)
-        return id
+        return (id, type)
     }
 
-    let requestedIsInput = type.flatMap(parseTypeArgument)
     let lowerArg = arg.lowercased()
     let devices = getAllDevices()
 
@@ -497,7 +535,7 @@ func resolveDevice(_ arg: String, type: String? = nil) -> AudioDeviceID? {
         }
 
         log("Resolved '\(arg)' => \(device.name) (id: \(device.id))", isDebug: true)
-        return device.id
+        return (device.id, type)
     }
 
     return nil
@@ -545,7 +583,7 @@ func parseGlobalOptions() -> [String] {
         switch arg {
         case "-v", "--version":
             log(programVersion)
-            exit(0)
+            exit(EXIT_SUCCESS)
         case "-q", "--quiet":
             isQuietEnabled = true
         default:
@@ -560,7 +598,7 @@ func parseCommandLine(arguments: [String]) -> Action {
 
     if ["-h", "--help"].contains(action) || action.isEmpty {
         printUsage()
-        exit(0)
+        exit(EXIT_SUCCESS)
     }
 
     switch action {
@@ -570,10 +608,10 @@ func parseCommandLine(arguments: [String]) -> Action {
     case "get":
         let type = arguments[safe: 2]
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] get <device_id|device_name> [type: input|output]")
         }
-        return .get(deviceID: deviceID, type: type)
+        return .get(deviceID: device.id, type: device.type)
 
     case "set":
         let type = arguments[safe: 3]
@@ -581,11 +619,11 @@ func parseCommandLine(arguments: [String]) -> Action {
               let levelStr = arguments[safe: 2],
               let level = Float32(levelStr),
               level >= 0, level <= 1,
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] set <device_id|device_name> <level (0.0-1.0)> [type: input|output]")
         }
 
-        return .set(deviceID: deviceID, level: level, type: type)
+        return .set(deviceID: device.id, level: level, type: device.type)
 
     case "mute":
         let stateOrType = arguments[safe: 2]
@@ -601,11 +639,11 @@ func parseCommandLine(arguments: [String]) -> Action {
         }
 
         guard let arg = arguments[safe: 1],
-              let deviceID = resolveDevice(arg, type: type) else {
+              let device = resolveDevice(arg, type: type) else {
             return .invalid("Usage: volctl [-q] mute <device_id|device_name> [on|off|toggle] [type: input|output]")
         }
 
-        return .mute(deviceID: deviceID, state: state, type: type)
+        return .mute(deviceID: device.id, state: state, type: device.type)
 
     default:
         return .invalid("Invalid action. Use 'list', 'get', 'set', or 'mute'.")
@@ -648,35 +686,39 @@ func printUsage() {
 
     Notes:
         - <device> can be an ID number or a string (partial match is ok)
+        - Device ID 0 selects the current default device
+          (output unless [type] is input; not the separate system-sound output)
+        - Selecting a default device does not change the macOS defaults
         - When using a string to select device, the first matching device is used
         - [type] is optional: input | output
           (if supplied, name matching is limited to devices supporting that direction)
+        - get, set, and mute return 0 on success or 1 on failure
+          (quiet mode suppresses messages without changing the exit status)
     """)
 }
 
 let positionalArgs = parseGlobalOptions()
 
-if positionalArgs.isEmpty {
-    printUsage()
-    exit(0)
-}
-
 let action = parseCommandLine(arguments: positionalArgs)
+let succeeded: Bool
 
 switch action {
 case .list:
     listDevices()
+    succeeded = true
 
 case .get(let deviceID, let type):
-    getVolume(deviceID: deviceID, type: type)
+    succeeded = getVolume(deviceID: deviceID, type: type)
 
 case .set(let deviceID, let level, let type):
-    setVolume(deviceID: deviceID, level: level, type: type)
+    succeeded = setVolume(deviceID: deviceID, level: level, type: type)
 
 case .mute(let deviceID, let state, let type):
-    exit(handleMuteCommand(deviceID: deviceID, state: state, type: type) ? 0 : 1)
+    succeeded = handleMuteCommand(deviceID: deviceID, state: state, type: type)
 
 case .invalid(let error):
     log(error, isError: true)
-    exit(1)
+    succeeded = false
 }
+
+exit(succeeded ? EXIT_SUCCESS : EXIT_FAILURE)
