@@ -61,6 +61,11 @@ volctl set 0 0.5 input
 # Toggle the default output's mute state or mute the default input
 volctl mute 0 toggle
 volctl mute 0 on input
+<<<<<<< HEAD
+=======
+```
+
+>>>>>>> 77eef42 (prep for release 1.2.1)
 ```
 
 ```console

@@ -1,7 +1,11 @@
 import CoreAudio
 import Foundation
 
+<<<<<<< HEAD
 let programVersion = "1.2.0"
+=======
+let programVersion = "1.2.1"
+>>>>>>> 77eef42 (prep for release 1.2.1)
 
 extension Array {
     subscript(safe index: Int) -> Element? {
@@ -57,7 +61,11 @@ func resolveDeviceDirection(
     }
 
     guard let isInput = parseTypeArgument(type) else {
+<<<<<<< HEAD
         log("Invalid type. Specify 'input' or 'output'.", isError: true)
+=======
+        log("Invalid type: Specify 'input' or 'output'", isError: true)
+>>>>>>> 77eef42 (prep for release 1.2.1)
         return nil
     }
 
@@ -366,7 +374,7 @@ func handleMuteCommand(deviceID: AudioDeviceID, state: String?, type: String?) -
         case "toggle":
             targetMuteState = !currentMuteState
         default:
-            log("Invalid mute state. Use 'on', 'off', or 'toggle'", isError: true)
+            log("Invalid mute state: Use 'on', 'off', or 'toggle'", isError: true)
             return false
         }
     } else {
@@ -389,7 +397,11 @@ func getVolume(deviceID: AudioDeviceID, type: String?) -> Bool {
     }
 
     guard let volumes = getVolumeWithFallback(deviceID: deviceID, isInput: isInput) else {
+<<<<<<< HEAD
         log("No volume available for this device.", isError: true)
+=======
+        log("No volume available for this device", isError: true)
+>>>>>>> 77eef42 (prep for release 1.2.1)
         return false
     }
 
@@ -447,7 +459,7 @@ func setVolume(deviceID: AudioDeviceID, level: Float32, type: String?) -> Bool {
             log("Failed to set volume", isError: true)
         }
     } else {
-        log("No channels available to set volume on.", isError: true)
+        log("No channels available to set volume on", isError: true)
     }
 
     return false
@@ -483,7 +495,11 @@ func getDefaultDevice(isInput: Bool) -> AudioDeviceID? {
     }
 
     guard deviceID != kAudioObjectUnknown else {
+<<<<<<< HEAD
         log("No default \(direction) device is available.", isError: true)
+=======
+        log("No default \(direction) device is available", isError: true)
+>>>>>>> 77eef42 (prep for release 1.2.1)
         return nil
     }
 
@@ -495,7 +511,11 @@ func resolveDevice(_ arg: String, type: String? = nil) -> (id: AudioDeviceID, ty
     let requestedIsInput = type.flatMap(parseTypeArgument)
 
     guard type == nil || requestedIsInput != nil else {
+<<<<<<< HEAD
         log("Invalid type. Specify 'input' or 'output'.", isError: true)
+=======
+        log("Invalid type: Specify 'input' or 'output'", isError: true)
+>>>>>>> 77eef42 (prep for release 1.2.1)
         return nil
     }
 
@@ -646,7 +666,7 @@ func parseCommandLine(arguments: [String]) -> Action {
         return .mute(deviceID: device.id, state: state, type: device.type)
 
     default:
-        return .invalid("Invalid action. Use 'list', 'get', 'set', or 'mute'.")
+        return .invalid("Invalid action. Use 'list', 'get', 'set', or 'mute'")
     }
 }
 
