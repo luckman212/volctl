@@ -41,10 +41,9 @@ The `get`, `set`, and `mute` commands return exit status `0` on success or `1` o
 
 Download the latest [release](https://github.com/luckman212/volctl/releases) and place `volctl` in your `$PATH` somewhere. I suggest `/usr/local/bin`.
 
-You can also install via Homebrew:
+You can also install via **Homebrew**:
 
 ```bash
-brew tap luckman212/tap
 brew install luckman212/tap/volctl
 ```
 
